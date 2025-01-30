@@ -25,7 +25,7 @@ export default function LeaderBoard({ scores }: LeaderBoardProps) {
           <tbody>
             {scores.map((score, index) => (
               <tr 
-                key={score.id} 
+                key={`score-${index}`}
                 className="border-b border-purple-300/10 hover:bg-white/5"
               >
                 <td className="py-3 px-4 text-white">{index + 1}</td>

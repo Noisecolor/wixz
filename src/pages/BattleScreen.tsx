@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Swords } from 'lucide-react';
-import { supabase } from '../lib/supabase';
 import LeaderBoard from '../components/LeaderBoard';
 import ScoreCard from '../components/ScoreCard';
 import PromptInput from '../components/PromptInput';
 import { useScoring } from '../hooks/useScoring';
-import { useOpenAI } from '../hooks/useOpenAI';
+import { useGoogleAI } from '../hooks/useGoogleAI';
 import { sanitizeLLMResponse } from '../utils/wordUtils';
+import { storage } from '../lib/storage';
+import { DebugLogger } from '../components/DebugConsole';
 import type { Score, GameScore } from '../types';
 
 export default function BattleScreen() {
@@ -14,7 +15,7 @@ export default function BattleScreen() {
   const [scores, setScores] = useState<GameScore[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const { calculateScore } = useScoring();
-  const { sendPrompt } = useOpenAI();
+  const { sendPrompt } = useGoogleAI();
   
   const [currentScore, setCurrentScore] = useState<Score>({
     total: 0,
@@ -29,60 +30,90 @@ export default function BattleScreen() {
   const [lastResponse, setLastResponse] = useState<string>('');
   const [originalWords, setOriginalWords] = useState<string[]>([]);
 
-  const fetchScores = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('UserScore')
-        .select('*')
-        .order('Score', { ascending: false });
-      
-      if (error) throw error;
-      setScores(data || []);
-    } catch (error) {
-      console.error('Error fetching scores:', error);
-    }
-  };
-
   useEffect(() => {
-    fetchScores();
-  }, []);
+    DebugLogger.log('info', 'BattleScreen mounted', { username });
+    try {
+      storage.loadScores();
+      const storedScores = storage.getScores();
+      DebugLogger.log('debug', 'Loaded scores from storage', { storedScores });
+      
+      setScores(storedScores.map(score => ({
+        User: username || 'Anonymous',
+        Score: score.total,
+        Response: '',
+        exactAccuracy: score.exactAccuracy,
+        partialAccuracy: score.partialAccuracy,
+        wordLevelAccuracy: score.wordLevelAccuracy,
+        normalizedEditDistance: score.normalizedEditDistance
+      })));
+    } catch (error) {
+      DebugLogger.log('error', 'Error loading scores', { error });
+    }
+  }, [username]);
 
   const handleQualificationRun = async (systemPrompt: string, testWords: string[]) => {
-    if (!systemPrompt || !username) return;
+    if (!systemPrompt || !username) {
+      DebugLogger.log('error', 'Invalid qualification run parameters', {
+        systemPrompt: !!systemPrompt,
+        username: !!username
+      });
+      return;
+    }
     
     setIsLoading(true);
+    DebugLogger.log('info', 'Starting qualification run', {
+      systemPrompt,
+      testWordsCount: testWords.length,
+      testWords
+    });
+
     try {
       setLastPrompt(systemPrompt);
       setOriginalWords(testWords);
       
       // Convert test words to user prompt
       const userPrompt = testWords.join(', ');
+      DebugLogger.log('debug', 'Sending prompt to AI', {
+        systemPrompt,
+        userPrompt
+      });
       
       const aiResponse = await sendPrompt(systemPrompt, userPrompt);
+      DebugLogger.log('debug', 'Received AI response', { aiResponse });
+      
       const sanitizedResponse = sanitizeLLMResponse(aiResponse);
+      DebugLogger.log('debug', 'Sanitized response', { sanitizedResponse });
       setLastResponse(sanitizedResponse);
       
       const score = calculateScore(sanitizedResponse, testWords, systemPrompt);
+      DebugLogger.log('info', 'Calculated score', { score });
       setCurrentScore(score);
 
-      const { error } = await supabase
-        .from('UserScore')
-        .insert([{ 
-          User: username, 
-          Score: score.total,
-          Response: sanitizedResponse,
-          exactAccuracy: score.exactAccuracy,
-          partialAccuracy: score.partialAccuracy,
-          wordLevelAccuracy: score.wordLevelAccuracy,
-          normalizedEditDistance: score.normalizedEditDistance
-        }]);
-
-      if (error) throw error;
-      await fetchScores();
+      storage.saveScore(score);
+      DebugLogger.log('debug', 'Saved score to storage');
+      
+      // Update displayed scores
+      const updatedScores = storage.getScores().map(score => ({
+        User: username || 'Anonymous',
+        Score: score.total,
+        Response: '',
+        exactAccuracy: score.exactAccuracy,
+        partialAccuracy: score.partialAccuracy,
+        wordLevelAccuracy: score.wordLevelAccuracy,
+        normalizedEditDistance: score.normalizedEditDistance
+      }));
+      setScores(updatedScores);
+      DebugLogger.log('debug', 'Updated displayed scores', { updatedScores });
     } catch (error) {
+      const err = error instanceof Error ? error : new Error('Unknown error');
+      DebugLogger.log('error', 'Error during qualification run', {
+        error: err.message,
+        stack: err.stack
+      });
       console.error('Error during qualification run:', error);
     } finally {
       setIsLoading(false);
+      DebugLogger.log('info', 'Qualification run completed');
     }
   };
 

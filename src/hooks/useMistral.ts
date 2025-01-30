@@ -1,24 +1,24 @@
 import { useState } from 'react';
 
-export function useOpenAI() {
+export function useMistral() {
   const [error, setError] = useState<Error | null>(null);
 
   const sendPrompt = async (systemPrompt: string, userPrompt: string): Promise<string> => {
-    const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
+    const apiKey = import.meta.env.VITE_LLM_API_KEY;
     
     if (!apiKey) {
-      throw new Error('Missing OpenAI API key');
+      throw new Error('Missing Mistral API key');
     }
 
     try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      const response = await fetch('https://api.mistral.ai/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey}`
         },
         body: JSON.stringify({
-          model: "gpt-4o-mini",
+          model: "mistral-tiny",
           messages: [
             {
               role: "system",
@@ -35,7 +35,7 @@ export function useOpenAI() {
       });
 
       if (!response.ok) {
-        throw new Error('OpenAI API request failed');
+        throw new Error('Mistral API request failed');
       }
 
       const data = await response.json();

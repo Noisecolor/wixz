@@ -1,42 +1,59 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Gamepad2 } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { storage } from '../lib/storage';
 import LeaderBoard from '../components/LeaderBoard';
+import { DebugLogger } from '../components/DebugConsole';
+import type { GameScore } from '../types';
 
 export default function LoginScreen() {
   const [username, setUsername] = useState('');
-  const [scores, setScores] = useState([]);
+  const [scores, setScores] = useState<GameScore[]>([]);
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetchScores();
+    DebugLogger.log('info', 'LoginScreen mounted');
+    loadScores();
   }, []);
 
-  const fetchScores = async () => {
+  const loadScores = () => {
     try {
-      const { data, error } = await supabase
-        .from('UserScore')
-        .select('*')
-        .order('Score', { ascending: false });
+      storage.loadScores();
+      const storedScores = storage.getScores();
+      DebugLogger.log('debug', 'Loaded scores from storage', { storedScores });
       
-      if (error) {
-        throw error;
-      }
-
-      setScores(data || []);
+      const gameScores: GameScore[] = storedScores.map(score => ({
+        User: localStorage.getItem('username') || 'Anonymous',
+        Score: score.total,
+        Response: '',
+        exactAccuracy: score.exactAccuracy,
+        partialAccuracy: score.partialAccuracy,
+        wordLevelAccuracy: score.wordLevelAccuracy,
+        normalizedEditDistance: score.normalizedEditDistance
+      }));
+      setScores(gameScores);
     } catch (err) {
-      console.error('Error fetching scores:', err);
+      const error = err instanceof Error ? err : new Error('Unknown error');
+      DebugLogger.log('error', 'Error loading scores', {
+        error: error.message,
+        stack: error.stack
+      });
       setError('Unable to load scores. Please check your connection.');
     }
   };
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
+    DebugLogger.log('debug', 'Login attempt', { username });
+    
     if (username.trim()) {
       localStorage.setItem('username', username);
-      navigate('/battle');
+      DebugLogger.log('info', 'User logged in', { username });
+      navigate('/promptwizards/battle');
+    } else {
+      DebugLogger.log('error', 'Invalid username');
+      setError('Please enter a valid username');
     }
   };
 

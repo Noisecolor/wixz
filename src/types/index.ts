@@ -9,13 +9,13 @@ export interface Score {
 }
 
 export interface GameScore {
-  id: number;
   User: string;
   Score: number;
   Response?: string;
-  created_at: string;
   exactAccuracy: number;
   partialAccuracy: number;
   wordLevelAccuracy: number;
   normalizedEditDistance: number;
+  id?: number;
+  created_at?: string;
 }
